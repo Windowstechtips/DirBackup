@@ -368,13 +368,13 @@ class BackupApp:
             self.root.after(0, lambda: self.status_var.set("Backup Complete"))
             self.root.after(0, lambda: self.progress.stop())
 
-    def update_progress(self, current, total):
-        self.progress['value'] = current
-        self.status_var.set(f"Processing... ({current}/{total})")
-
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
             self.root.after(0, lambda: self.status_var.set("Error during backup"))
+
+    def update_progress(self, current, total):
+        self.progress['value'] = current
+        self.status_var.set(f"Processing... ({current}/{total})")
 
     # --- Restore Methods ---
     def initiate_restore(self):
