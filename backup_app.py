@@ -225,7 +225,10 @@ class BackupApp:
         btn_restore = tk.Button(bottom_frame, text="Restore Checkpoints (ZIP)", command=self.initiate_restore, bg="#dddddd", height=2)
         btn_restore.pack(fill=tk.X, pady=5)
 
-        # --- Status Bar ---
+        # --- Status Bar & Progress ---
+        self.progress = ttk.Progressbar(self.root, orient=tk.HORIZONTAL, length=100, mode='determinate')
+        self.progress.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=2)
+        
         self.status_var = tk.StringVar()
         self.status_var.set("Ready")
         status_bar = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
@@ -317,9 +320,22 @@ class BackupApp:
         threading.Thread(target=self.create_backup, args=(save_path, paths), daemon=True).start()
 
     def create_backup(self, save_path, paths):
-        self.status_var.set("Backing up... Please wait.")
+        self.status_var.set("Backing up... Calculating files...")
+        self.progress['value'] = 0
         try:
+            # Phase 1: Count files
+            total_files = 0
+            for source_path in paths:
+                if os.path.exists(source_path):
+                     for _, _, files in os.walk(source_path):
+                         total_files += len(files)
+            
+            self.progress['maximum'] = total_files if total_files > 0 else 1
+            
             restore_map = {"mappings": []}
+            processed_count = 0
+            
+            self.status_var.set(f"Backing up... (0/{total_files})")
             
             with zipfile.ZipFile(save_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for idx, source_path in enumerate(paths):
@@ -342,10 +358,19 @@ class BackupApp:
                             zip_path = os.path.join(archive_name, rel_path)
                             zipf.write(abs_path, zip_path)
                             
+                            processed_count += 1
+                            if processed_count % 5 == 0 or processed_count == total_files:
+                                self.root.after(0, self.update_progress, processed_count, total_files)
+                            
                 zipf.writestr("restore_map.json", json.dumps(restore_map, indent=4))
             
             self.root.after(0, lambda: messagebox.showinfo("Success", f"Backup created:\n{save_path}"))
             self.root.after(0, lambda: self.status_var.set("Backup Complete"))
+            self.root.after(0, lambda: self.progress.stop())
+
+    def update_progress(self, current, total):
+        self.progress['value'] = current
+        self.status_var.set(f"Processing... ({current}/{total})")
 
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
@@ -397,9 +422,17 @@ class BackupApp:
             messagebox.showerror("Error", f"Failed to elevate privileges: {e}")
 
     def execute_restore(self, zip_path, restore_map):
-        self.status_var.set("Restoring... Please wait.")
+        self.status_var.set("Restoring... Calculating...")
+        self.progress['value'] = 0
         try:
             with zipfile.ZipFile(zip_path, 'r') as zipf:
+                # Count total files to extract
+                file_list = [m for m in zipf.namelist() if not m.endswith('/') and m != "restore_map.json"]
+                total_files = len(file_list)
+                self.progress['maximum'] = total_files if total_files > 0 else 1
+                
+                processed_count = 0
+                
                 for mapping in restore_map["mappings"]:
                     source_path = mapping["source_path"]
                     archive_name = mapping["archive_name"]
@@ -420,9 +453,14 @@ class BackupApp:
                                 os.makedirs(target_dir, exist_ok=True)
                                 with zipf.open(member) as source, open(target_file_path, "wb") as target:
                                     shutil.copyfileobj(source, target)
+                                
+                                processed_count += 1
+                                if processed_count % 5 == 0 or processed_count == total_files:
+                                    self.root.after(0, self.update_progress, processed_count, total_files)
 
             self.root.after(0, lambda: messagebox.showinfo("Success", "Restore complete!"))
             self.root.after(0, lambda: self.status_var.set("Restore Complete"))
+            self.root.after(0, lambda: self.progress.stop())
             
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
