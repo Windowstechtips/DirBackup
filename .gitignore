@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.manifest
+*.spec
+
+# PyInstaller
+build/
+dist/
+
+# Application Specific
+config.json
+*.zip
